@@ -10,7 +10,6 @@ import scipy.optimize as sco
 """
 assumptions:
 - no short selling (all weights <= 1)
-
 """
 
 # ****************************** parameters ******************************
