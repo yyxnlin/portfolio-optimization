@@ -4,6 +4,7 @@ import numpy as np
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 import seaborn as sns
+import scipy.optimize as sco
 
 
 """
@@ -26,6 +27,21 @@ time_period_str = {'D': 'Daily', 'M': 'Monthly', 'Y': 'Yearly'}.get(time_period)
 tickers = sorted(tickers)
 num_assets = len(tickers)
 
+def portfolio_return(weights, req_returns):
+    return np.sum(weights * req_returns.mean())
+
+def portfolio_volatility(weights, cov_matrix):
+    return np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+
+def negative_sharpe_ratio(weights, req_returns, cov_matrix, risk_free_rate=0):
+    p_return = portfolio_return(weights, req_returns)
+    p_volatility = portfolio_volatility(weights, cov_matrix)
+    return -(p_return - risk_free_rate) / p_volatility  # negative sharpe ratio for minimization
+
+# Constraints: sum of weights must be 1
+def constraint(weights):
+    return np.sum(weights) - 1
+
 def max_drawdown(returns):
     cumulative_returns = (1 + returns).cumprod()
     # Calculate the running maximum
@@ -36,10 +52,6 @@ def max_drawdown(returns):
 
     # Find the maximum drawdown (the lowest value in the drawdown series)
     return drawdown.min()
-
-# Function to calculate portfolio volatility
-def portfolio_volatility_func(weights, mean_returns, cov_matrix):
-    return np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
 
 
 # **************************** PART 0: download data and plot graphs  **************************** 
@@ -94,21 +106,17 @@ plt.show()
 
 # **************************** PART 1: equal allocation profile **************************** 
 equal_weights = np.ones(num_assets) / num_assets  # Equal weight for each asset
-portfolio_return_equal_alloc = np.dot(equal_weights, mean_returns)
-portfolio_volatility_equal_alloc = np.sqrt(np.dot(equal_weights.T, np.dot(cov_matrix, equal_weights)))
+portfolio_return_equal_alloc = portfolio_return(equal_weights, req_returns)
+portfolio_volatility_equal_alloc = portfolio_volatility(equal_weights, cov_matrix)
 
 
 # **************************** PART 2: minimum risk profile **************************** 
-# Constraints: sum of weights must be 1
-def constraint(weights):
-    return np.sum(weights) - 1
-
 initial_guess = np.ones(num_assets) / num_assets # initial guess for weights (equal allocation)
 bounds = tuple((0, 1) for asset in range(num_assets))
 constraints = {'type': 'eq', 'fun': constraint}
 
 # minimize portfolio volatility to find the minimum risk portfolio
-optimal_result = minimize(portfolio_volatility_func, initial_guess, args=(mean_returns, cov_matrix),
+optimal_result = minimize(portfolio_volatility, initial_guess, args=(cov_matrix),
                           method='SLSQP', bounds=bounds, constraints=constraints)
 
 min_risk_weights = optimal_result.x
@@ -133,14 +141,21 @@ sharpe_ratios = excess_returns / portfolio_volatilities
 
 
 # **************************** PART 4: find max sharpe ratio  **************************** 
-# index of the max sharpe ratio
-max_sharpe_idx = np.argmax(sharpe_ratios)
+bounds = tuple((0, 1) for _ in range(len(tickers)))
 
-# weights, return, volatility for the maximum sharpe ratio portfolio
-max_sharpe_weights = weights[max_sharpe_idx]
-max_sharpe_return = portfolio_returns[max_sharpe_idx]
-max_sharpe_volatility = portfolio_volatilities[max_sharpe_idx]
-max_sharpe_ratio = sharpe_ratios[max_sharpe_idx]
+# initial guess (evenly distributed portfolio)
+initial_guess = [1. / len(tickers)] * len(tickers)
+
+# optimization to find the weights that maximize sharpe ratio
+optimized_result = sco.minimize(negative_sharpe_ratio, initial_guess, args=(req_returns, cov_matrix), 
+                                method='SLSQP', bounds=bounds, constraints={'type': 'eq', 'fun': constraint})
+
+max_sharpe_weights = optimized_result.x
+
+# calculate return, volatility, and sharpe ratio for the optimized portfolio
+max_sharpe_return = portfolio_return(max_sharpe_weights, req_returns)
+max_sharpe_volatility = portfolio_volatility(max_sharpe_weights, cov_matrix)
+max_sharpe_ratio = -(optimized_result.fun)  # Since we minimized the negative Sharpe ratio
 
 # max drawdown for this portfolio
 monthly_portfolio_returns = (req_returns * max_sharpe_weights).sum(axis=1)
