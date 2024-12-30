@@ -239,5 +239,28 @@ plt.legend()
 plt.show()
 
 
+# **************************** PART 7: backtesting the strategy & compare with s&p500 **************************** 
+
+# download sp500 data
+sp500_data = yf.download('^GSPC', start=start_date, end=end_date)['Close']
+sp500_data_normalized = sp500_data / sp500_data.iloc[0]
 
 
+data['Portfolio'] = sum(data[ticker] * weight for ticker, weight in zip(tickers, max_sharpe_weights))
+data['Portfolio_Normalized'] = data['Portfolio'] / data['Portfolio'].iloc[0]
+
+outperformance = (data['Portfolio_Normalized'].iloc[-1] - sp500_data_normalized.iloc[-1]).iloc[0]
+
+print ("Total return difference in comparison to S&P 500: {:<.2f}%".format(outperformance*100))
+
+# **************************** PART 8: plotting results **************************** 
+plt.figure(figsize=(14, 7))
+plt.plot(data['Portfolio_Normalized'], label='Portfolio Value', color='skyblue')
+plt.plot(sp500_data_normalized, label='S&P 500', color='midnightblue', linestyle='--')
+
+plt.title('Optimal (Tangent) Portfolio Performance vs. S&P500')
+plt.xlabel('Date')
+plt.ylabel('Price')
+plt.legend()
+plt.grid(True)
+plt.show()
